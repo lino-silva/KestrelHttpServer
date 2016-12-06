@@ -447,13 +447,19 @@ namespace Microsoft.AspNetCore.Server.Kestrel.FunctionalTests
         [Fact]
         public async Task ResponseBodyNotWrittenOnHeadResponseAndLoggedOnlyOnce()
         {
-            var mockKestrelTrace = new Mock<IKestrelTrace>();
+            const string response = "hello, world";
 
-            using (var server = new TestServer(async httpContext =>
-            {
-                await httpContext.Response.WriteAsync("hello, world");
-                await httpContext.Response.Body.FlushAsync();
-            }, new TestServiceContext { Log = mockKestrelTrace.Object }))
+            var logTcs = new TaskCompletionSource<object>();
+            var mockKestrelTrace = new Mock<IKestrelTrace>();
+            mockKestrelTrace
+                .Setup(trace => trace.ConnectionHeadResponseBodyWrite(It.IsAny<string>(), response.Length))
+                .Callback<string, long>((connectionId, count) => logTcs.SetResult(null));
+
+                using (var server = new TestServer(async httpContext =>
+                {
+                    await httpContext.Response.WriteAsync(response);
+                    await httpContext.Response.Body.FlushAsync();
+                }, new TestServiceContext { Log = mockKestrelTrace.Object }))
             {
                 using (var connection = server.CreateConnection())
                 {
@@ -466,11 +472,16 @@ namespace Microsoft.AspNetCore.Server.Kestrel.FunctionalTests
                         $"Date: {server.Context.DateHeaderValue}",
                         "",
                         "");
+
+                    // Wait for message to be logged before disposing the socket.
+                    // Disposing the socket will abort the connection and Frame._requestAborted
+                    // might be 1 by the time ProduceEnd() gets called and the message is logged.
+                    await logTcs.Task.TimeoutAfter(TimeSpan.FromSeconds(10));
                 }
             }
 
             mockKestrelTrace.Verify(kestrelTrace =>
-                kestrelTrace.ConnectionHeadResponseBodyWrite(It.IsAny<string>(), "hello, world".Length), Times.Once);
+                kestrelTrace.ConnectionHeadResponseBodyWrite(It.IsAny<string>(), response.Length), Times.Once);
         }
 
         [Fact]
