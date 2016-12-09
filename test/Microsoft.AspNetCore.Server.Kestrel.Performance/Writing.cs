@@ -2,7 +2,6 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
@@ -16,77 +15,70 @@ namespace Microsoft.AspNetCore.Server.Kestrel.Performance
 {
     public class Writing
     {
-        private const int InnerLoopCount = 512;
-
-        private readonly TestFrame<object> _frameWrite;
-        private readonly TestFrame<object> _frameWriteAsync;
-        private readonly TestFrame<object> _frameWriteAsyncAwaited;
+        private readonly TestFrame<object> _frame;
         private readonly TestFrame<object> _frameChunked;
         private readonly byte[] _writeData;
 
         public Writing()
         {
+            _frame = MakeFrame();
             _frameChunked = MakeFrame();
-            _frameWrite = MakeFrame();
-            _frameWriteAsync = MakeFrame();
-            _frameWriteAsyncAwaited = MakeFrame();
-
-            _writeData = new byte[1024];
+            _writeData = new byte[1];
         }
 
         [Setup]
-        public void SetupFrames()
+        public void Setup()
         {
-            foreach (var frame in new[] { _frameWrite, _frameWriteAsync, _frameWriteAsyncAwaited })
-            {
-                frame.Reset();
-                frame.RequestHeaders.Add("Content-Length", (InnerLoopCount * _writeData.Length).ToString(CultureInfo.InvariantCulture));
-            }
+            _frame.Reset();
+            _frame.RequestHeaders.Add("Content-Length", "1073741824");
+
+            _frameChunked.Reset();
+            _frameChunked.RequestHeaders.Add("Transfer-Encoding", "chunked");
         }
 
-        [Benchmark(OperationsPerInvoke = InnerLoopCount)]
+        [Benchmark]
         public void Write()
         {
-            _frameWrite.Write(new ArraySegment<byte>(_writeData));
+            _frame.Write(new ArraySegment<byte>(_writeData));
         }
 
-        [Benchmark(OperationsPerInvoke = InnerLoopCount)]
+        [Benchmark]
         public void WriteChunked()
         {
             _frameChunked.Write(new ArraySegment<byte>(_writeData));
         }
 
-        [Benchmark(OperationsPerInvoke = InnerLoopCount)]
+        [Benchmark]
         public async Task WriteAsync()
         {
-            await _frameWriteAsync.WriteAsync(new ArraySegment<byte>(_writeData), default(CancellationToken));
+            await _frame.WriteAsync(new ArraySegment<byte>(_writeData), default(CancellationToken));
         }
 
-        [Benchmark(OperationsPerInvoke = InnerLoopCount)]
+        [Benchmark]
         public async Task WriteAsyncChunked()
         {
             await _frameChunked.WriteAsync(new ArraySegment<byte>(_writeData), default(CancellationToken));
         }
 
-        [Benchmark(OperationsPerInvoke = InnerLoopCount)]
+        [Benchmark]
         public async Task WriteAsyncAwaited()
         {
-            await _frameWriteAsyncAwaited.WriteAsyncAwaited(new ArraySegment<byte>(_writeData), default(CancellationToken));
+            await _frame.WriteAsyncAwaited(new ArraySegment<byte>(_writeData), default(CancellationToken));
         }
 
-        [Benchmark(OperationsPerInvoke = InnerLoopCount)]
+        [Benchmark]
         public async Task WriteAsyncAwaitedChunked()
         {
             await _frameChunked.WriteAsyncAwaited(new ArraySegment<byte>(_writeData), default(CancellationToken));
         }
 
-        [Benchmark(OperationsPerInvoke = InnerLoopCount)]
+        [Benchmark]
         public async Task ProduceEnd()
         {
-            await _frameWrite.ProduceEndAsync();
+            await _frame.ProduceEndAsync();
         }
 
-        [Benchmark(OperationsPerInvoke = InnerLoopCount)]
+        [Benchmark]
         public async Task ProduceEndChunked()
         {
             await _frameChunked.ProduceEndAsync();
